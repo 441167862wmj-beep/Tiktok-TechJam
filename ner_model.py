@@ -1,18 +1,25 @@
-
 from transformers import pipeline
+import re
 
 class NERPrivacyFilter:
     def __init__(self, model_name="dslim/bert-base-NER"):
-        # 加载预训练 NER pipeline
         self.ner = pipeline("ner", model=model_name, grouped_entities=True)
+        self.sg_phone_pattern = re.compile(r"\b[689]\d{7}\b")
 
     def detect_entities(self, text: str):
-        return self.ner(text)
+        entities = self.ner(text)
+        for m in self.sg_phone_pattern.finditer(text):
+            entities.append({
+                "entity_group": "PHONE",
+                "start": m.start(),
+                "end": m.end(),
+                "word": m.group()
+            })
+        return entities
 
     def redact(self, text: str, strategy="mask"):
         entities = self.detect_entities(text)
         redacted_text = text
-        # 按偏移位置逆序替换，避免位置错乱
         for ent in sorted(entities, key=lambda e: e['start'], reverse=True):
             if strategy == "mask":
                 replacement = "*" * (ent['end'] - ent['start'])
